@@ -1,0 +1,5 @@
+yt-dlp>=2023.12
+funasr>=1.0
+modelscope>=1.9
+torch>=1.13
+torchaudio>=0.13
