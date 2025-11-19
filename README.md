@@ -1,4 +1,4 @@
-# get-text.py
+# init.py
 
 一键把任意在线视频转成中文文字
 流水线：URL → yt-dlp → 音频 → ffmpeg → 16 kHz WAV → FunASR → 中文文本
@@ -14,7 +14,7 @@ pip install -r requirements.txt
 
 ## 使用
 ```bash
-python get-text.py "https://www.youtube.com/watch?v=XXXXXXX"
+python init.py "https://www.youtube.com/watch?v=XXXXXXX"
 ```
 运行后在 `output/` 目录生成 `<上传时间>-<上传者>-<视频标题>.txt`（UTF-8）。
 

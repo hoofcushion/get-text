@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 一键下载-转码-语音识别（中文）
-用法: python get-text.py <URL>
+用法: python init.py <URL>
 """
 import hashlib
 import json
@@ -167,6 +167,6 @@ def process_video(url: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("用法: python get-text.py <URL>")
+        print("用法: python init.py <URL>")
         sys.exit(1)
     process_video(sys.argv[1])
