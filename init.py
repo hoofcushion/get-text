@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 一键下载-转码-语音识别（中文）
-用法: python init.py <URL>
+用法: python init.py <URL或文件路径>
 """
 import hashlib
 import json
@@ -32,45 +32,80 @@ def get_model():
 
 
 # ---------- 工具函数 ----------
-def get_task_dir(url: str) -> Path:
-    """根据URL生成唯一任务目录路径"""
-    safe = hashlib.md5(url.encode()).hexdigest()
+def get_task_dir(input_path: str) -> Path:
+    """根据输入路径生成唯一任务目录路径"""
+    safe = hashlib.md5(input_path.encode()).hexdigest()
     task_dir = JOBS_DIR / safe
     task_dir.mkdir(parents=True, exist_ok=True)
     return task_dir
 
 
-def download_raw(url: str, task_dir: Path) -> tuple[Path, dict]:
-    """下载原始文件并返回文件路径和元信息"""
+def download_or_use_file(input_arg: str, task_dir: Path) -> tuple[Path, dict]:
+    """
+    下载原始文件或使用现有文件
+    返回文件路径和元信息
+    """
     step_dir = task_dir / "01_download"
     step_dir.mkdir(exist_ok=True)
     done_file = step_dir / "donefile"
     info_json = step_dir / "raw.info.json"
 
-    if done_file.exists():
-        print("📦 已存在原始文件和元信息，跳过下载")
+    # 如果已存在处理过的文件，直接返回
+    if done_file.exists() and info_json.exists():
+        print("📦 已存在原始文件和元信息，跳过下载/复制")
         raw_file = next(f for f in step_dir.iterdir() if f.stem == "raw" and f.suffix != ".json")
         with open(info_json, encoding="utf-8") as f:
             return raw_file, json.load(f)
-
-    cmd = [
-        "yt-dlp",
-        "--cookies-from-browser",
-        "firefox",
-        "-f",
-        "worst*",
-        "-o",
-        "raw.%(ext)s",
-        "--write-info-json",
-        "--no-playlist",
-        url,
-    ]
-    subprocess.run(cmd, cwd=step_dir, check=True)
-
-    raw_file = next(f for f in step_dir.iterdir() if f.stem == "raw" and f.suffix != ".json")
-    with open(info_json, encoding="utf-8") as f:
-        info = json.load(f)
-
+    
+    input_path = Path(input_arg)
+    
+    # 如果传入的是文件路径
+    if input_path.exists():
+        print(f"📁 使用本地文件: {input_arg}")
+        
+        # 复制文件到任务目录
+        from shutil import copy2
+        
+        # 确定文件扩展名
+        ext = input_path.suffix
+        
+        # 创建原始文件副本
+        raw_file = step_dir / f"raw{ext}"
+        copy2(input_path, raw_file)
+        
+        # 创建元信息
+        info = {
+            "title": input_path.stem,
+            "uploader": "local_file",
+            "timestamp": datetime.now().timestamp(),
+            "_input_file": str(input_path.resolve()),
+            "_type": "local_file"
+        }
+        
+        with open(info_json, "w", encoding="utf-8") as f:
+            json.dump(info, f, ensure_ascii=False, indent=2)
+    
+    else:  # 传入的是URL
+        print(f"🌐 下载URL: {input_arg}")
+        cmd = [
+            "yt-dlp",
+            "--cookies-from-browser",
+            "firefox",
+            "-f",
+            "worst*",
+            "-o",
+            "raw.%(ext)s",
+            "--write-info-json",
+            "--no-playlist",
+            input_arg,
+        ]
+        subprocess.run(cmd, cwd=step_dir, check=True)
+        
+        # 读取下载的元信息
+        raw_file = next(f for f in step_dir.iterdir() if f.stem == "raw" and f.suffix != ".json")
+        with open(info_json, encoding="utf-8") as f:
+            info = json.load(f)
+    
     done_file.touch()
     return raw_file, info
 
@@ -142,13 +177,13 @@ def export_transcript(raw_info: dict, transcript_text: str) -> Path:
 
 
 # ---------- 主流程 ----------
-def process_video(url: str):
-    """处理视频URL的完整流程"""
+def process_input(input_arg: str):
+    """处理输入参数（URL或文件路径）的完整流程"""
     JOBS_DIR.mkdir(exist_ok=True)
-    task_dir = get_task_dir(url)
+    task_dir = get_task_dir(input_arg)
 
-    # 1. 下载原始文件
-    raw_path, raw_info = download_raw(url, task_dir)
+    # 1. 下载原始文件或使用现有文件
+    raw_path, raw_info = download_or_use_file(input_arg, task_dir)
 
     # 2. 转换为音频
     wav_dir = task_dir / "02_audio"
@@ -167,6 +202,9 @@ def process_video(url: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("用法: python init.py <URL>")
+        print("用法: python init.py <URL或文件路径>")
+        print("示例1: python init.py https://www.youtube.com/watch?v=example")
+        print("示例2: python init.py ./video.mp4")
         sys.exit(1)
-    process_video(sys.argv[1])
+    
+    process_input(sys.argv[1])
