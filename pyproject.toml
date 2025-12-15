@@ -1,0 +1,25 @@
+[project]
+name = "get-text"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "funasr>=1.0",
+    "modelscope>=1.9",
+    "yt-dlp>=2023.12",
+    "torch>=1.13",
+    "torchaudio>=0.13"
+
+]
+
+# China mirrors
+[tool.uv.sources]
+torch = [ { index = "pytorch" } ]
+torchaudio = [ { index = "pytorch" } ]
+torchvision = [ { index = "pytorch" } ]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://mirrors.nju.edu.cn/pytorch/whl/cu128"
+explicit = true

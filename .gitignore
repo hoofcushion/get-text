@@ -1,3 +1,4 @@
 jobs
 output
-venv
+.venv
+uv.lock

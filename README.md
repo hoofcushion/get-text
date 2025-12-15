@@ -1,25 +1,41 @@
 # init.py
 
-一键把任意在线视频转成中文文字
+在本地一键把任意在线视频(yt-dlp)转成中文文字
 流水线：URL → yt-dlp → 音频 → ffmpeg → 16 kHz WAV → FunASR → 中文文本
 
 ## 安装
 ```bash
+# install
 git clone https://github.com/hoofcushion/get-text
 cd get-text
-python -m venv venv
+
+# venv
+python -m venv .venv
 source venv/bin/activate
 pip install -r requirements.txt
+
+# or uv
+uv sync
 ```
 
 ## 使用
 ```bash
+# direct use
 python init.py "https://www.youtube.com/watch?v=XXXXXXX"
+
+# uv
+uv run python init.py "https://www.youtube.com/watch?v=XXXXXXX"
+
+# linux
+./launch.sh "https://www.youtube.com/watch?v=XXXXXXX"
+
+# windows
+./launch.ps1 "https://www.youtube.com/watch?v=XXXXXXX"
 ```
 运行后在 `output/` 目录生成 `<上传时间>-<上传者>-<视频标题>.txt`（UTF-8）。
 
 ## 环境要求
-- Python ≥ 3.8
+- Python ≥ 3.11
 - FFmpeg（系统包或 https://ffmpeg.org 下载）
 - yt-dlp（requirements.txt 自动安装）
 - FunASR 及模型（首次运行自动下载，约 1 GB）

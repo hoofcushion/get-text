@@ -7,6 +7,7 @@ import hashlib
 import json
 import sys
 import subprocess
+import shutil
 from datetime import datetime
 from pathlib import Path
 from funasr import AutoModel
@@ -19,6 +20,18 @@ SAMPLING = 16000
 JOBS_DIR = Path("jobs")
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+def check_ffmpeg():
+    """检查 ffmpeg 是否安装"""
+    if shutil.which("ffmpeg") is None:
+        print("错误: ffmpeg 未安装")
+        print("请先安装 ffmpeg:")
+        print("  Ubuntu/Debian: sudo apt install ffmpeg")
+        print("  Arch: sudo pacman -S ffmpeg")
+        print("  macOS: brew install ffmpeg")
+        sys.exit(1)
+
 
 # 延迟加载模型
 _model = None
@@ -177,7 +190,7 @@ def export_transcript(raw_info: dict, transcript_text: str) -> Path:
 
 
 # ---------- 主流程 ----------
-def process_input(input_arg: str):
+def process(input_arg: str):
     """处理输入参数（URL或文件路径）的完整流程"""
     JOBS_DIR.mkdir(exist_ok=True)
     task_dir = get_task_dir(input_arg)
@@ -201,10 +214,15 @@ def process_input(input_arg: str):
 
 
 if __name__ == "__main__":
+    # 1. 检查参数数量
     if len(sys.argv) != 2:
         print("用法: python init.py <URL或文件路径>")
         print("示例1: python init.py https://www.youtube.com/watch?v=example")
         print("示例2: python init.py ./video.mp4")
         sys.exit(1)
     
-    process_input(sys.argv[1])
+    # 2. 检查 ffmpeg
+    check_ffmpeg()
+    
+    # 3. 执行主流程
+    process(sys.argv[1])
