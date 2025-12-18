@@ -38,12 +38,13 @@ uv run python init.py "https://www.youtube.com/watch?v=XXXXXXX"
 - Python ≥ 3.11
 - FFmpeg（系统包或 https://ffmpeg.org 下载）
 - yt-dlp（requirements.txt 自动安装）
-- FunASR 及模型（首次运行自动下载，约 1 GB）
+- FunASR 及模型
 
 ## 小技巧
 - 第一次运行会下载 Paraformer 模型，请保持网络畅通。
 - 如需英文或其它语言，修改脚本里的 `MODEL` 变量即可。
 - 请自行检查磁盘空闲、网络通畅
+- 如果需要硬件加速，请自行指定 pytorch 的 whl 版本
 
 ## 断点继续
 脚本会自动在 `jobs/` 目录生成中间文件，中断后可自动识别断点继续运行。
