@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 一键下载-转码-语音识别（中文）
-用法: python init.py <URL或文件路径>
+用法: python init.py [--cpu] <URL或文件路径>
 """
 import hashlib
 import json
 import sys
 import subprocess
 import shutil
+import argparse
 from datetime import datetime
 from pathlib import Path
 from funasr import AutoModel
@@ -20,6 +21,9 @@ SAMPLING = 16000
 JOBS_DIR = Path("jobs")
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+# CPU模式标志
+USE_CPU = False
 
 
 def check_ffmpeg():
@@ -40,7 +44,17 @@ def get_model():
     """延迟加载语音识别模型"""
     global _model
     if _model is None:
-        _model = AutoModel(model=MODEL, vad_model=VAD, punc_model=PUNC)
+        if USE_CPU:
+            print("🔧 使用CPU模式运行语音识别")
+            _model = AutoModel(
+                model=MODEL, 
+                vad_model=VAD, 
+                punc_model=PUNC,
+                device="cpu"
+            )
+        else:
+            print("🎮 使用GPU模式运行语音识别（默认）")
+            _model = AutoModel(model=MODEL, vad_model=VAD, punc_model=PUNC)
     return _model
 
 
@@ -210,19 +224,38 @@ def process(input_arg: str):
 
     # 4. 导出结果
     final_path = export_transcript(raw_info, transcript_text)
-    print(f"✅ 完成：{final_path.resolve()}")
+    print(f"✅ 完成: \"{final_path.resolve()}\"")
 
 
 if __name__ == "__main__":
-    # 1. 检查参数数量
-    if len(sys.argv) != 2:
-        print("用法: python init.py <URL或文件路径>")
-        print("示例1: python init.py https://www.youtube.com/watch?v=example")
-        print("示例2: python init.py ./video.mp4")
-        sys.exit(1)
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(
+        description="一键下载-转码-语音识别（中文）",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python init.py https://www.youtube.com/watch?v=example
+  python init.py --cpu ./video.mp4
+  python init.py --cpu https://www.bilibili.com/video/BVxxxx
+        """.strip()
+    )
+    parser.add_argument(
+        "input",
+        help="输入参数: URL或本地文件路径"
+    )
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        help="使用CPU模式运行语音识别（默认为GPU模式）"
+    )
     
-    # 2. 检查 ffmpeg
+    args = parser.parse_args()
+    
+    # 设置CPU模式
+    USE_CPU = args.cpu
+    
+    # 检查 ffmpeg
     check_ffmpeg()
     
-    # 3. 执行主流程
-    process(sys.argv[1])
+    # 执行主流程
+    process(args.input)
