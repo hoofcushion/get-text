@@ -35,7 +35,6 @@ class WorkerThread(QThread):
             
             # 模拟状态更新（实际需要在init.py中添加状态回调）
             self.status.emit("开始处理...")
-            self.status.emit("检查输入文件/URL...")
             
             result = process(self.url)
             self.status.emit("处理完成!")
