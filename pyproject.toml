@@ -10,6 +10,7 @@ dependencies = [
     "yt-dlp[default]>=2023.12",
     "torch>=1.13",
     "torchaudio>=0.13",
+    "pyqt5>=5.15.11",
 ]
 
 # China mirrors

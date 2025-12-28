@@ -226,6 +226,8 @@ def process(input_arg: str):
     final_path = export_transcript(raw_info, transcript_text)
     print(f"✅ 完成: \"{final_path.resolve()}\"")
 
+    return transcript_text
+
 
 if __name__ == "__main__":
     # 解析命令行参数
