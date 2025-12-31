@@ -8,12 +8,11 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QLabel, QLineEdit, QTextEdit, QPushButton, QCheckBox, 
                              QWidget, QMessageBox, QSplitter)
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
-import threading
 
 # Import functions from init.py
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
-    from init import process, check_ffmpeg, USE_CPU
+    import init
 except ImportError:
     print("Error: Please make sure init.py is in the same directory")
     sys.exit(1)
@@ -30,13 +29,12 @@ class WorkerThread(QThread):
     
     def run(self):
         try:
-            global USE_CPU
-            USE_CPU = self.use_cpu
+            init.USE_CPU = self.use_cpu
             
             # 模拟状态更新（实际需要在init.py中添加状态回调）
             self.status.emit("开始处理...")
             
-            result = process(self.url)
+            result = init.process(self.url)
             self.status.emit("处理完成!")
             self.finished.emit(result)
             
@@ -139,7 +137,7 @@ class MainWindow(QMainWindow):
 def main():
     # Check ffmpeg
     try:
-        check_ffmpeg()
+        init.check_ffmpeg()
     except:
         app = QApplication(sys.argv)
         QMessageBox.critical(None, "Error", "请先安装ffmpeg")
