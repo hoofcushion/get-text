@@ -1,50 +1,48 @@
-# init.py
+# 语音转文字工具
 
-在本地一键把任意在线视频(yt-dlp)转成中文文字
-流水线：URL → yt-dlp → 音频 → ffmpeg → 16 kHz WAV → FunASR → 中文文本
+将在线视频或本地音频文件转换为中文文字。
 
 ## 安装
+
 ```bash
-# install
 git clone https://github.com/hoofcushion/get-text
 cd get-text
 
-# venv
-python -m venv .venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# or uv
+# 推荐使用 uv
 uv sync
+
+# 或使用 venv，需要自行管理版本
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## 使用
+## 使用方法
+
+### 命令行模式
 ```bash
-# direct use
-python init.py "https://www.youtube.com/watch?v=XXXXXXX"
-
-# uv
 uv run python init.py "https://www.youtube.com/watch?v=XXXXXXX"
-
-# linux
-./launch.sh "https://www.youtube.com/watch?v=XXXXXXX"
-
-# windows
-./launch.ps1 "https://www.youtube.com/watch?v=XXXXXXX"
 ```
-运行后在 `output/` 目录生成 `<上传时间>-<上传者>-<视频标题>.txt`（UTF-8）。
+
+### GUI模式
+```bash
+uv run python gui.py
+```
+
+## 功能特点
+
+- 支持 YouTube、Bilibili 等在线视频
+- 支持本地音频/视频文件
+- 多任务并行处理（GUI模式）
+- 断点续传功能
+- 自动生成带时间戳的文本文件
 
 ## 环境要求
+
 - Python ≥ 3.11
-- FFmpeg（系统包或 https://ffmpeg.org 下载）
-- yt-dlp（requirements.txt 自动安装）
-- FunASR 及模型
+- FFmpeg
+- 网络连接（首次使用需下载模型）
 
-## 小技巧
-- 第一次运行会下载 Paraformer 模型，请保持网络畅通。
-- 如需英文或其它语言，修改脚本里的 `MODEL` 变量即可。
-- 请自行检查磁盘空闲、网络通畅
-- 如果需要硬件加速，请自行指定 pytorch 的 whl 版本
+## 输出格式
 
-## 断点继续
-脚本会自动在 `jobs/` 目录生成中间文件，中断后可自动识别断点继续运行。
+处理完成后在 `output/` 目录生成格式为 `时间-上传者-标题.{txt/srt}` 的文本文件。

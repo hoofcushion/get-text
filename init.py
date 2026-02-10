@@ -1,120 +1,122 @@
-#!/usr/bin/env python3
-"""
-一键下载-转码-语音识别（中文）
-用法: python init.py [--cpu] <URL或文件路径>
-"""
 import hashlib
 import json
 import sys
 import subprocess
 import shutil
 import argparse
+import time
 from datetime import datetime
 from pathlib import Path
-from funasr import AutoModel
+import model
 
-# ---------- 配置 ----------
-MODEL = "paraformer-zh"
-VAD = "fsmn-vad"
-PUNC = "ct-punc"
-SAMPLING = 16000
-JOBS_DIR = Path("jobs")
-OUTPUT_DIR = Path("output")
-OUTPUT_DIR.mkdir(exist_ok=True)
-
-# CPU模式标志
-USE_CPU = False
+SPEECH_MODEL_ID = "paraformer-zh"
+VAD_MODEL_ID = "fsmn-vad"
+PUNC_MODEL_ID = "ct-punc"
+AUDIO_SAMPLING_RATE = 16000
+TEMPORARY_JOBS_DIRECTORY = Path("jobs")
+TEMPORARY_JOBS_DIRECTORY.mkdir(exist_ok=True)
+FINAL_OUTPUT_DIRECTORY = Path("output")
+FINAL_OUTPUT_DIRECTORY.mkdir(exist_ok=True)
+FORCE_CPU_INFERENCE = False
 
 
-def check_ffmpeg():
-    """检查 ffmpeg 是否安装"""
+def import_srt_generator_class():
+    from srt import SRTGenerator
+
+    return SRTGenerator
+
+
+def verify_ffmpeg_installation():
     if shutil.which("ffmpeg") is None:
-        print("错误: ffmpeg 未安装")
-        print("请先安装 ffmpeg:")
-        print("  Ubuntu/Debian: sudo apt install ffmpeg")
-        print("  Arch: sudo pacman -S ffmpeg")
-        print("  macOS: brew install ffmpeg")
+        print("[错误] ffmpeg 未安装，请先安装 ffmpeg 并添加到系统环境变量")
         sys.exit(1)
 
 
-# 延迟加载模型
-_model = None
+def get_initialized_speech_model(logger_callback=print):
+    """使用 model.py 提供的接口获取模型实例"""
+    compute_device = "cpu" if FORCE_CPU_INFERENCE else "cuda"
+    logger_callback(
+        f"[模型初始化] 正在加载语音识别模型 (设备: {'CPU' if FORCE_CPU_INFERENCE else 'GPU'})..."
+    )
+    start_timestamp = time.time()
 
-def get_model():
-    """延迟加载语音识别模型"""
-    global _model
-    if _model is None:
-        if USE_CPU:
-            print("🔧 使用CPU模式运行语音识别")
-            _model = AutoModel(
-                model=MODEL, 
-                vad_model=VAD, 
-                punc_model=PUNC,
-                device="cpu"
-            )
-        else:
-            print("🎮 使用GPU模式运行语音识别（默认）")
-            _model = AutoModel(model=MODEL, vad_model=VAD, punc_model=PUNC)
-    return _model
+    speech_model = model.request_model(
+        SPEECH_MODEL_ID,
+        lambda AutoModel: AutoModel(
+            model=SPEECH_MODEL_ID,
+            vad_model=VAD_MODEL_ID,
+            punc_model=None,
+            device=compute_device,
+        ),
+    )
 
-
-# ---------- 工具函数 ----------
-def get_task_dir(input_path: str) -> Path:
-    """根据输入路径生成唯一任务目录路径"""
-    safe = hashlib.md5(input_path.encode()).hexdigest()
-    task_dir = JOBS_DIR / safe
-    task_dir.mkdir(parents=True, exist_ok=True)
-    return task_dir
+    logger_callback(
+        f"[模型初始化] 加载完成，耗时: {time.time() - start_timestamp:.2f}s"
+    )
+    return speech_model
 
 
-def download_or_use_file(input_arg: str, task_dir: Path) -> tuple[Path, dict]:
-    """
-    下载原始文件或使用现有文件
-    返回文件路径和元信息
-    """
-    step_dir = task_dir / "01_download"
-    step_dir.mkdir(exist_ok=True)
-    done_file = step_dir / "donefile"
-    info_json = step_dir / "raw.info.json"
+def get_initialized_punc_model(logger_callback=print):
+    """使用 model.py 提供的接口获取模型实例"""
+    compute_device = "cpu" if FORCE_CPU_INFERENCE else "cuda"
+    logger_callback(
+        f"[模型初始化] 正在加载标点恢复模型 (设备: {'CPU' if FORCE_CPU_INFERENCE else 'GPU'})..."
+    )
+    start_timestamp = time.time()
 
-    # 如果已存在处理过的文件，直接返回
-    if done_file.exists() and info_json.exists():
-        print("📦 已存在原始文件和元信息，跳过下载/复制")
-        raw_file = next(f for f in step_dir.iterdir() if f.stem == "raw" and f.suffix != ".json")
-        with open(info_json, encoding="utf-8") as f:
-            return raw_file, json.load(f)
-    
-    input_path = Path(input_arg)
-    
-    # 如果传入的是文件路径
-    if input_path.exists():
-        print(f"📁 使用本地文件: {input_arg}")
-        
-        # 复制文件到任务目录
-        from shutil import copy2
-        
-        # 确定文件扩展名
-        ext = input_path.suffix
-        
-        # 创建原始文件副本
-        raw_file = step_dir / f"raw{ext}"
-        copy2(input_path, raw_file)
-        
-        # 创建元信息
-        info = {
-            "title": input_path.stem,
-            "uploader": "local_file",
+    speech_model = model.request_model(
+        PUNC_MODEL_ID,
+        lambda AutoModel: AutoModel(
+            model=PUNC_MODEL_ID,
+            device=compute_device,
+        ),
+    )
+
+    logger_callback(
+        f"[模型初始化] 加载完成，耗时: {time.time() - start_timestamp:.2f}s"
+    )
+    return speech_model
+
+
+def generate_task_unique_directory(input_source_string: str) -> Path:
+    unique_hash = hashlib.md5(input_source_string.encode()).hexdigest()
+    task_specific_dir = TEMPORARY_JOBS_DIRECTORY / unique_hash
+    task_specific_dir.mkdir(parents=True, exist_ok=True)
+    return task_specific_dir
+
+
+def acquire_input_resource(
+    input_argument: str, task_directory: Path, logger_callback=print
+) -> tuple[Path, dict]:
+    download_step_dir = task_directory / "01_download"
+    download_step_dir.mkdir(exist_ok=True)
+    completion_flag_file = download_step_dir / "donefile"
+    metadata_json_file = download_step_dir / "raw.info.json"
+
+    if completion_flag_file.exists() and metadata_json_file.exists():
+        logger_callback("检测到已存在缓存资源，跳过下载或复制环节")
+        raw_resource_file = next(
+            f
+            for f in download_step_dir.iterdir()
+            if f.stem == "raw" and f.suffix != ".json"
+        )
+        with open(metadata_json_file, encoding="utf-8") as f:
+            return raw_resource_file, json.load(f)
+
+    potential_local_path = Path(input_argument)
+    if potential_local_path.exists():
+        logger_callback(f"正在处理本地文件: {potential_local_path.name}")
+        file_extension = potential_local_path.suffix
+        raw_resource_file = download_step_dir / f"raw{file_extension}"
+        shutil.copy2(potential_local_path, raw_resource_file)
+        resource_metadata = {
+            "title": potential_local_path.stem,
+            "uploader": "local_user",
             "timestamp": datetime.now().timestamp(),
-            "_input_file": str(input_path.resolve()),
-            "_type": "local_file"
         }
-        
-        with open(info_json, "w", encoding="utf-8") as f:
-            json.dump(info, f, ensure_ascii=False, indent=2)
-    
-    else:  # 传入的是URL
-        print(f"🌐 下载URL: {input_arg}")
-        cmd = [
+    else:
+        logger_callback(f"正在尝试从网络获取资源: {input_argument}")
+        yt_dlp_command = [
             "yt-dlp",
             "--cookies-from-browser",
             "firefox",
@@ -124,140 +126,244 @@ def download_or_use_file(input_arg: str, task_dir: Path) -> tuple[Path, dict]:
             "raw.%(ext)s",
             "--write-info-json",
             "--no-playlist",
-            input_arg,
+            input_argument,
         ]
-        subprocess.run(cmd, cwd=step_dir, check=True)
-        
-        # 读取下载的元信息
-        raw_file = next(f for f in step_dir.iterdir() if f.stem == "raw" and f.suffix != ".json")
-        with open(info_json, encoding="utf-8") as f:
-            info = json.load(f)
-    
-    done_file.touch()
-    return raw_file, info
+        execution_result = subprocess.run(
+            yt_dlp_command, cwd=download_step_dir, capture_output=True, text=True
+        )
+        if execution_result.returncode != 0:
+            logger_callback(f"[错误] 下载失败详情: {execution_result.stderr}")
+            raise RuntimeError(f"无法获取网络资源: {input_argument}")
+
+        raw_resource_file = next(
+            f
+            for f in download_step_dir.iterdir()
+            if f.stem == "raw" and f.suffix != ".json"
+        )
+
+        yt_dlp_info_file = download_step_dir / "raw.info.json"
+        if yt_dlp_info_file.exists():
+            with open(yt_dlp_info_file, encoding="utf-8") as f:
+                yt_dlp_info = json.load(f)
+        else:
+            yt_dlp_info = {}
+
+        resource_metadata = {
+            "title": yt_dlp_info.get("title", "unknown"),
+            "uploader": yt_dlp_info.get("uploader", "unknown"),
+            "timestamp": yt_dlp_info.get("timestamp", datetime.now().timestamp()),
+            "original_url": input_argument,
+        }
+
+    with open(metadata_json_file, "w", encoding="utf-8") as f:
+        json.dump(resource_metadata, f, ensure_ascii=False, indent=2)
+
+    completion_flag_file.touch()
+    logger_callback("资源定位成功")
+    return raw_resource_file, resource_metadata
 
 
-def convert_to_wav(raw_path: Path, wav_path: Path):
-    """将原始文件转换为WAV音频文件"""
-    step_dir = wav_path.parent
-    step_dir.mkdir(exist_ok=True)
-    done_file = step_dir / "donefile"
-    if done_file.exists():
-        print("🎵 已存在WAV文件，跳过转码")
+def extract_standard_audio_wav(
+    raw_media_path: Path, target_wav_path: Path, logger_callback=print
+):
+    step_completion_flag = target_wav_path.parent / "donefile"
+    if step_completion_flag.exists():
+        logger_callback("检测到已转换的音频缓存，跳过转码")
         return
-
-    cmd = [
+    logger_callback(f"正在执行音频标准化 (采样率: {AUDIO_SAMPLING_RATE}Hz)...")
+    target_wav_path.parent.mkdir(exist_ok=True)
+    start_timestamp = time.time()
+    ffmpeg_command = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
         "error",
         "-i",
-        str(raw_path),
+        str(raw_media_path),
         "-ar",
-        str(SAMPLING),
+        str(AUDIO_SAMPLING_RATE),
         "-ac",
         "1",
         "-sample_fmt",
         "s16",
-        str(wav_path),
+        str(target_wav_path),
     ]
-    subprocess.run(cmd, check=True)
-    done_file.touch()
+    subprocess.run(ffmpeg_command, check=True)
+    step_completion_flag.touch()
+    logger_callback(f"音频转码完成，耗时: {time.time() - start_timestamp:.2f}s")
 
 
-def transcribe_audio(wav_path: Path, transcript_path: Path) -> str:
-    """语音识别，返回转录文本"""
-    step_dir = transcript_path.parent
-    step_dir.mkdir(exist_ok=True)
-    done_file = step_dir / "donefile"
-    if done_file.exists():
-        print("📝 已存在转录结果，跳过语音识别")
-        return transcript_path.read_text(encoding="utf-8")
+def perform_speech_recognition(
+    wav_file_path: Path, result_storage_path: Path, logger_callback=print
+) -> dict:
+    recognition_completion_flag = result_storage_path.parent / "donefile"
+    if recognition_completion_flag.exists():
+        logger_callback("检测到语音识别缓存结果，直接读取")
+        with open(result_storage_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    speech_model = get_initialized_speech_model(logger_callback=logger_callback)
+    logger_callback("开始语音识别推理 (此过程取决于硬件性能)...")
+    start_timestamp = time.time()
+    inference_result = speech_model.generate(input=str(wav_file_path))[0]
+    formatted_result_data = {
+        "text": inference_result["text"],
+        "timestamp": inference_result.get("timestamp", []),
+        "raw_inference_output": inference_result,
+    }
+    result_storage_path.parent.mkdir(exist_ok=True)
+    with open(result_storage_path, "w", encoding="utf-8") as f:
+        json.dump(formatted_result_data, f, ensure_ascii=False, indent=2)
+    recognition_completion_flag.touch()
+    logger_callback(f"识别完毕，推理引擎耗时: {time.time() - start_timestamp:.2f}s")
+    return formatted_result_data
 
-    model = get_model()
-    res = model.generate(input=str(wav_path))[0]
-    text = res["text"]
-    transcript_path.write_text(text, encoding="utf-8")
-    done_file.touch()
-    return text
+
+def generate_text_with_punctuation(
+    recognition_data: dict, task_directory: Path, logger_callback=print
+) -> Path:
+    """第四步：生成带标点的文本文件（保存在任务目录中）"""
+    text_output_dir = task_directory / "04_text_output"
+    text_output_dir.mkdir(exist_ok=True)
+    txt_file_path = text_output_dir / "text_with_punctuation.txt"
+    
+    completion_flag = text_output_dir / "donefile"
+    if completion_flag.exists():
+        logger_callback("检测到已生成的文本文件缓存，跳过标点恢复")
+        return txt_file_path
+    
+    punc_model = get_initialized_punc_model(logger_callback=logger_callback)
+    logger_callback("开始标点恢复推理...")
+    start_timestamp = time.time()
+    text_with_punctuation = punc_model.generate(input=recognition_data["text"])[0]["text"]
+    logger_callback(f"标点恢复完成，耗时: {time.time() - start_timestamp:.2f}s")
+    
+    txt_file_path.write_text(text_with_punctuation, encoding="utf-8")
+    completion_flag.touch()
+    return txt_file_path
 
 
-def export_transcript(raw_info: dict, transcript_text: str) -> Path:
-    """导出最终转录文本到输出目录"""
-
-    ts = int(raw_info["timestamp"])
-    dt = datetime.fromtimestamp(ts)
-    uploader = raw_info["uploader"]
-    title = raw_info["title"]
-
-    safe_name = "".join(
-        c if c.isalnum() or c in " -_.,()[]【】" else "_"
-        for c in f"{dt:%y%m%d%H%M%S}-{uploader}-{title}.txt"
+def generate_srt_file(
+    recognition_data: dict, task_directory: Path, logger_callback=print
+) -> Path:
+    """第四步：生成SRT文件（保存在任务目录中）"""
+    srt_output_dir = task_directory / "04_srt_output"
+    srt_output_dir.mkdir(exist_ok=True)
+    srt_file_path = srt_output_dir / "subtitles.srt"
+    
+    completion_flag = srt_output_dir / "donefile"
+    if completion_flag.exists():
+        logger_callback("检测到已生成的SRT文件缓存，跳过SRT生成")
+        return srt_file_path
+    
+    logger_callback("正在生成带有时间轴的SRT字幕文件...")
+    SRTGeneratorClass = import_srt_generator_class()
+    srt_engine = SRTGeneratorClass(use_cpu=FORCE_CPU_INFERENCE)
+    srt_engine.generate_srt_from_recognition_result(
+        [recognition_data["raw_inference_output"]], output_file_path=srt_file_path
     )
-    final_path = OUTPUT_DIR / safe_name
-    if final_path.exists():
-        print("💾 已存在最终文本，跳过导出")
-        return final_path
-
-    final_path.write_text(transcript_text, encoding="utf-8")
-    return final_path
+    
+    completion_flag.touch()
+    return srt_file_path
 
 
-# ---------- 主流程 ----------
-def process(input_arg: str):
-    """处理输入参数（URL或文件路径）的完整流程"""
-    JOBS_DIR.mkdir(exist_ok=True)
-    task_dir = get_task_dir(input_arg)
+def copy_to_final_output(
+    raw_info: dict, 
+    task_dir: Path, 
+    output_format_choice: str, 
+    logger_callback=print
+) -> list[Path]:
+    """第五步：复制到最终输出目录"""
+    original_timestamp = int(raw_info.get("timestamp", 0))
+    formatted_date = datetime.fromtimestamp(original_timestamp)
+    uploader_name = raw_info.get("uploader", "unknown")
+    content_title = raw_info.get("title", "video")
+    
+    final_files = []
+    
+    if output_format_choice in ["text", "both"]:
+        source_txt = task_dir / "04_text_output" / "text_with_punctuation.txt"
+        if source_txt.exists():
+            safe_txt_filename = "".join(
+                c if c.isalnum() or c in " -_." else "_"
+                for c in f"{formatted_date:%y%m%d%H%M}-{uploader_name}-{content_title}.txt"
+            )
+            target_txt_path = FINAL_OUTPUT_DIRECTORY / safe_txt_filename
+            shutil.copy2(source_txt, target_txt_path)
+            final_files.append(target_txt_path)
+            logger_callback(f"文本文件已复制到: {target_txt_path.name}")
+    
+    if output_format_choice in ["srt", "both"]:
+        source_srt = task_dir / "04_srt_output" / "subtitles.srt"
+        if source_srt.exists():
+            safe_srt_filename = "".join(
+                c if c.isalnum() or c in " -_." else "_"
+                for c in f"{formatted_date:%y%m%d%H%M}-{uploader_name}-{content_title}.srt"
+            )
+            target_srt_path = FINAL_OUTPUT_DIRECTORY / safe_srt_filename
+            shutil.copy2(source_srt, target_srt_path)
+            final_files.append(target_srt_path)
+            logger_callback(f"SRT文件已复制到: {target_srt_path.name}")
+    
+    return final_files
 
-    # 1. 下载原始文件或使用现有文件
-    raw_path, raw_info = download_or_use_file(input_arg, task_dir)
 
-    # 2. 转换为音频
-    wav_dir = task_dir / "02_audio"
-    wav_path = wav_dir / "audio.wav"
-    convert_to_wav(raw_path, wav_path)
+def run_full_transcription_pipeline(
+    input_source: str, output_format_choice: str = "both", logger_callback=print
+):
+    verify_ffmpeg_installation()
+    
+    task_working_dir = generate_task_unique_directory(input_source)
+    
+    raw_file_path, resource_info = acquire_input_resource(
+        input_source, task_working_dir, logger_callback=logger_callback
+    )
+    
+    standard_audio_path = task_working_dir / "02_audio" / "audio.wav"
+    extract_standard_audio_wav(
+        raw_file_path, standard_audio_path, logger_callback=logger_callback
+    )
+    
+    json_result_path = task_working_dir / "03_result" / "result.json"
+    recognition_output = perform_speech_recognition(
+        standard_audio_path, json_result_path, logger_callback=logger_callback
+    )
+    
+    if output_format_choice in ["text", "both"]:
+        generate_text_with_punctuation(
+            recognition_output, task_working_dir, logger_callback=logger_callback
+        )
+    
+    if output_format_choice in ["srt", "both"]:
+        generate_srt_file(
+            recognition_output, task_working_dir, logger_callback=logger_callback
+        )
+    
+    final_produced_files = copy_to_final_output(
+        resource_info, task_working_dir, output_format_choice, logger_callback=logger_callback
+    )
+    
+    logger_callback("[任务状态] 所有流程均已成功执行完毕")
+    return final_produced_files
 
-    # 3. 语音识别
-    transcript_dir = task_dir / "03_transcript"
-    transcript_path = transcript_dir / "transcript.txt"
-    transcript_text = transcribe_audio(wav_path, transcript_path)
 
-    # 4. 导出结果
-    final_path = export_transcript(raw_info, transcript_text)
-    print(f"✅ 完成: \"{final_path.resolve()}\"")
-
-    return transcript_text
+def process(input_arg: str, logger_func=print):
+    """兼容旧版调用的包装函数"""
+    return run_full_transcription_pipeline(input_arg, "both", logger_func)
 
 
 if __name__ == "__main__":
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(
-        description="一键下载-转码-语音识别（中文）",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  python init.py https://www.youtube.com/watch?v=example
-  python init.py --cpu ./video.mp4
-  python init.py --cpu https://www.bilibili.com/video/BVxxxx
-        """.strip()
+    cli_parser = argparse.ArgumentParser(description="语音转文字处理工具")
+    cli_parser.add_argument("input_path", help="本地文件路径或在线视频URL")
+    cli_parser.add_argument("--cpu", action="store_true", help="强制使用 CPU 进行推理")
+    cli_parser.add_argument(
+        "--format", choices=["text", "srt", "both"], default="both", help="设置输出格式"
     )
-    parser.add_argument(
-        "input",
-        help="输入参数: URL或本地文件路径"
-    )
-    parser.add_argument(
-        "--cpu",
-        action="store_true",
-        help="使用CPU模式运行语音识别（默认为GPU模式）"
-    )
-    
-    args = parser.parse_args()
-    
-    # 设置CPU模式
-    USE_CPU = args.cpu
-    
-    # 检查 ffmpeg
-    check_ffmpeg()
-    
-    # 执行主流程
-    process(args.input)
+    cli_args = cli_parser.parse_args()
+    FORCE_CPU_INFERENCE = cli_args.cpu
+    try:
+        results = run_full_transcription_pipeline(cli_args.input_path, cli_args.format)
+        for path in results:
+            print(f"生成文件: {path}")
+    except Exception as error:
+        print(f"[致命错误] 流程被中断: {error}")
+        sys.exit(1)
