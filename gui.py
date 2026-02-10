@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QCheckBox,
     QFileDialog,
-    QProgressBar,
     QGroupBox,
     QMessageBox,
     QSplitter,
@@ -155,10 +154,6 @@ class TranscriptionApplication(QMainWindow):
         file_operations_layout.addWidget(self.copy_file_contents_button)
         file_operations_layout.addStretch()
 
-        # 进度显示
-        self.progress_indicator = QProgressBar()
-        self.progress_indicator.setVisible(False)
-
         # 主内容分割器
         content_splitter = QSplitter(Qt.Vertical)
 
@@ -212,7 +207,6 @@ class TranscriptionApplication(QMainWindow):
         primary_layout.addWidget(output_configuration_group)
         primary_layout.addLayout(control_buttons_layout)
         primary_layout.addLayout(file_operations_layout)
-        primary_layout.addWidget(self.progress_indicator)
         primary_layout.addWidget(content_splitter, 1)
 
     def browse_for_media_file(self):
@@ -249,8 +243,6 @@ class TranscriptionApplication(QMainWindow):
 
         self.start_transcription_button.setEnabled(False)
         self.terminate_transcription_button.setEnabled(True)
-        self.progress_indicator.setVisible(True)
-        self.progress_indicator.setRange(0, 0)
 
         self.set_file_operations_state(False)
 
@@ -317,8 +309,6 @@ class TranscriptionApplication(QMainWindow):
     def reset_interface_state(self):
         self.start_transcription_button.setEnabled(True)
         self.terminate_transcription_button.setEnabled(False)
-        self.progress_indicator.setVisible(False)
-        self.progress_indicator.setRange(0, 100)
 
     def set_file_operations_state(self, enable_state):
         self.open_selected_file_button.setEnabled(
