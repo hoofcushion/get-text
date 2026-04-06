@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 import model
+from process import to_word_timestamp_list
 
 SPEECH_MODEL_ID = "paraformer-zh"
 VAD_MODEL_ID = "fsmn-vad"
@@ -249,19 +250,52 @@ def generate_srt_file(
     srt_output_dir = task_directory / "04_srt_output"
     srt_output_dir.mkdir(exist_ok=True)
     srt_file_path = srt_output_dir / "subtitles.srt"
-    
+
     completion_flag = srt_output_dir / "donefile"
     if completion_flag.exists():
         logger_callback("检测到已生成的SRT文件缓存，跳过SRT生成")
         return srt_file_path
-    
+
     logger_callback("正在生成带有时间轴的SRT字幕文件...")
+
+    # 确定推理设备
+    device = "cpu" if FORCE_CPU_INFERENCE else "cuda"
+
+    # 音频文件路径（用于强制对齐）
+    audio_path = task_directory / "02_audio" / "audio.wav"
+    if not audio_path.exists():
+        logger_callback(f"错误：音频文件不存在 {audio_path}")
+        raise FileNotFoundError(f"音频文件缺失: {audio_path}")
+
     SRTGeneratorClass = import_srt_generator_class()
     srt_engine = SRTGeneratorClass(use_cpu=FORCE_CPU_INFERENCE)
-    srt_engine.generate_srt_from_recognition_result(
-        [recognition_data["raw_inference_output"]], output_file_path=srt_file_path
-    )
-    
+
+    # 检查是否需要补全时间戳
+    if not recognition_data.get("timestamp"):
+        logger_callback("识别结果缺少时间戳，正在进行强制对齐以生成时间戳...")
+        word_timestamps = to_word_timestamp_list(
+            str(audio_path), recognition_data, device=device
+        )
+        if word_timestamps is None:
+            logger_callback("错误：无法生成时间戳，SRT文件生成失败")
+            raise RuntimeError("时间戳生成失败")
+
+        # 转换为 SRTGenerator 期望的格式（将 'end' 改为 'finish'）
+        word_list_for_srt = [
+            {"text": w["text"], "start": w["start"], "finish": w["end"]}
+            for w in word_timestamps
+        ]
+
+        # 直接使用单词级时间戳生成 SRT
+        srt_engine.generate_srt_from_word_timestamps(
+            word_list_for_srt, output_file_path=srt_file_path
+        )
+    else:
+        # 已有时间戳，使用原始识别结果生成
+        srt_engine.generate_srt_from_recognition_result(
+            [recognition_data["raw_inference_output"]], output_file_path=srt_file_path
+        )
+
     completion_flag.touch()
     return srt_file_path
 
